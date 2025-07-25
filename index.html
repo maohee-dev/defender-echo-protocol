@@ -613,7 +613,6 @@
 
         // --- MAIN GAME LOGIC (WRAPPED IN A FUNCTION) ---
         function launchGame() {
-            // This function contains the entire original game logic.
             // --- CORE SETUP ---
             const canvas = document.getElementById('gameCanvas');
             const ctx = canvas.getContext('2d');
@@ -637,7 +636,6 @@
             let fragmentsRescued = 0;
             let fragmentsLost = 0;
             const totalFragments = 8;
-            let fragmentsSpawned = 0;
             let fragmentSpawnTimer = 0;
             let perfectRun = true;
             let lastTime = 0;
@@ -787,7 +785,7 @@
                 let bonusText = `Fragment Bonus: ${waveBonus}`; if (perfectRun) bonusText += ` | PERFECT: ${perfectBonus}`;
                 subtext.innerHTML = bonusText; if(audioInitialized) waveCompleteSynth.triggerAttackRelease("C3", "2s");
                 setTimeout(() => {
-                    fragmentsRescued = 0; fragmentsLost = 0; fragmentsSpawned = 0; fragmentSpawnTimer = 0; perfectRun = true;
+                    fragmentsRescued = 0; fragmentsLost = 0;  perfectRun = true;
                     fragments = []; enemies = []; bullets = []; if(audioInitialized) choirSynth.releaseAll(); activeChoirNotes = [];
                     title.textContent = `WAVE ${wave}`; subtext.textContent = 'Get Ready...';
                     setTimeout(() => { messageOverlay.style.display = 'none'; gameState = 'playing'; }, 2000);
@@ -803,7 +801,7 @@
                 if (audioInitialized && Tone.context.state !== 'running') Tone.context.resume();
                 if(audioInitialized) bassPulse.start();
                 score = 0; lives = initialLives; wave = 1; nextLifeScore = 10000;
-                fragmentsRescued = 0; fragmentsLost = 0; fragmentsSpawned = 0; fragmentSpawnTimer = 0; perfectRun = true;
+                fragmentsRescued = 0; fragmentsLost = 0; fragmentSpawnTimer = 0; perfectRun = true;
                 player = new Player(); bullets = []; enemies = []; particles = []; fragments = [];
                 landscape = new WireframeLandscape(); dataStorm = new DataStorm();
                 messageOverlay.style.display = 'none'; gameState = 'playing';
@@ -827,7 +825,19 @@
                 bullets = bullets.filter(b => b.x < width); bullets.forEach(b => b.update(dt));
                 const enemyCount = 5 + wave * 2; if (Math.random() < (0.02 + wave * 0.002) && enemies.length < enemyCount) enemies.push(new Enemy(wave));
                 enemies = enemies.filter(e => e.x > -e.size); enemies.forEach(e => e.update(dt));
-                fragmentSpawnTimer -= dt; if (fragmentSpawnTimer <= 0 && fragmentsSpawned < totalFragments) { fragments.push(new Fragment(width + 20, Math.random() * height, fragmentsSpawned)); fragmentsSpawned++; fragmentSpawnTimer = Math.max(3, 15 - wave * 0.75); }
+                
+                // --- GUARANTEED FRAGMENT SPAWNING (STATE RECONCILIATION) ---
+                fragmentSpawnTimer -= dt;
+                if (fragmentSpawnTimer <= 0) {
+                    const totalFragmentsAccountedFor = fragments.length + fragmentsRescued + fragmentsLost;
+                    if (totalFragmentsAccountedFor < totalFragments) {
+                        // A fragment is missing. Spawn a new one to reconcile the state.
+                        fragments.push(new Fragment(width + 20, Math.random() * height, totalFragmentsAccountedFor));
+                    }
+                    // Always reset the timer to maintain spaced-out spawning.
+                    fragmentSpawnTimer = Math.max(3, 12 - wave * 0.7);
+                }
+
                 fragments = fragments.filter(f => f.x > -f.size && f.state !== 'rescued'); fragments.forEach(f => f.update(dt));
                 if(audioInitialized && enemies.length > 7 && Math.random() < 0.05) alarmSynth.triggerAttackRelease("G5", "16n");
                 particles = particles.filter(p => p.life > 0); particles.forEach(p => p.update(dt));
@@ -835,8 +845,11 @@
                 fragments.forEach(fragment => { if (fragment.state === 'idle') { const dx = player.x - fragment.x, dy = player.y - fragment.y; const dist = Math.sqrt(dx * dx + dy * dy); const followingCount = fragments.filter(f => f.state === 'following').length; if (dist < 50 && followingCount < player.maxFollowing) { fragment.state = 'following'; fragment.target = player; } } });
                 enemies.forEach(enemy => { if (player.isInvincible) return; const dx = player.x - enemy.x, dy = player.y - enemy.y; const dist = Math.sqrt(dx * dx + dy * dy); if (dist < player.width / 2 + enemy.size / 2) loseLife(); });
                 enemies.forEach(enemy => { fragments.forEach((fragment, fIndex) => { if (fragment.state === 'following') { const dx = enemy.x - fragment.x, dy = enemy.y - fragment.y; const dist = Math.sqrt(dx * dx + dy * dy); if (dist < enemy.size / 2 + fragment.size) { for (let i = 0; i < 15; i++) particles.push(new Particle(fragment.x, fragment.y, fragmentColor)); if(audioInitialized) { explosionSynth.triggerAttackRelease("4n"); const note = fragmentScale[fragment.index % fragmentScale.length]; choirSynth.triggerRelease(note); activeChoirNotes = activeChoirNotes.filter(n => n !== note); } fragments.splice(fIndex, 1); perfectRun = false; fragmentsLost++; } } }); });
-                if (fragmentsRescued + fragmentsLost >= totalFragments) startWave(wave + 1);
-                if (score >= nextLifeScore) { lives++; nextLifeScore += 10000; }
+                
+                // --- WAVE END CONDITION ---
+                if (fragmentsRescued + fragmentsLost >= totalFragments) {
+                    startWave(wave + 1);
+                }
             }
 
             function draw() {
