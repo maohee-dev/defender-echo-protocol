@@ -1,8 +1,7 @@
 # 🛡️ Defender: Echo Protocol  
 > Retro-futuristic arcade shooter with a **color-shifting cyber-aesthetic** 🌈⚡  
 
-![screenshot](https://via.placeholder.com/800x400/001020/00ffff?text=Splash+Screen+Demo)
-
+https://defender-echo-protocol.vercel.app
 ---
 
 ## 🎮 What is it?
