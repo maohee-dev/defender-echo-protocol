@@ -277,6 +277,35 @@
             #message-overlay h1 { font-size: 2em; }
             #message-overlay p { font-size: 0.9em; }
         }
+
+        /* --- MOBILE PORTRAIT OPTIMIZATIONS --- */
+        @media (max-width: 768px) and (orientation: portrait) {
+            #touch-controls {
+                height: 25%; /* Reduce vertical space taken by controls */
+            }
+
+            #joystick-area {
+                width: 120px;
+                height: 120px;
+                bottom: 15px;
+                left: 15px;
+            }
+            
+            #joystick-knob {
+                width: 60px;
+                height: 60px;
+                top: 30px; /* (120 - 60) / 2 */
+                left: 30px; /* (120 - 60) / 2 */
+            }
+
+            #shoot-button {
+                width: 100px;
+                height: 100px;
+                bottom: 15px;
+                right: 15px;
+                font-size: 1.2em;
+            }
+        }
     </style>
 </head>
 <body>
@@ -646,6 +675,8 @@
             const keys = {};
             let isShooting = false, joystickActive = false;
             let joystickStart = { x: 0, y: 0 }, joystickCurrent = { x: 0, y: 0 };
+            let joystickTouchId = null;
+            let shootTouchId = null;
 
             // --- AUDIO SYSTEM ---
             let audioInitialized = false;
@@ -900,24 +931,67 @@
                 }
                 
                 if (gameState === 'playing') {
-                    if (e.target === shootButton) {
-                        e.preventDefault();
-                        isShooting = true;
-                    }
-                    else if (e.target === joystickArea || e.target === joystickKnob) {
-                        e.preventDefault();
-                        joystickActive = true; 
-                        const touch = e.touches[0];
-                        joystickStart.x = touch.clientX; 
-                        joystickStart.y = touch.clientY;
-                        joystickCurrent.x = touch.clientX; 
-                        joystickCurrent.y = touch.clientY;
+                    e.preventDefault();
+                    const changedTouches = e.changedTouches;
+                    for (let i = 0; i < changedTouches.length; i++) {
+                        const touch = changedTouches[i];
+                        if ((e.target === shootButton) && shootTouchId === null) {
+                            shootTouchId = touch.identifier;
+                            isShooting = true;
+                        }
+                        else if ((e.target === joystickArea || e.target === joystickKnob) && joystickTouchId === null) {
+                            joystickTouchId = touch.identifier;
+                            joystickActive = true;
+                            joystickStart.x = touch.clientX;
+                            joystickStart.y = touch.clientY;
+                            joystickCurrent.x = touch.clientX;
+                            joystickCurrent.y = touch.clientY;
+                        }
                     }
                 }
             }
 
-            function handlePointerMove(e) { if (joystickActive) { e.preventDefault(); const touch = e.touches[0]; joystickCurrent.x = touch.clientX; joystickCurrent.y = touch.clientY; const dx = joystickCurrent.x - joystickStart.x, dy = joystickCurrent.y - joystickStart.y; const dist = Math.min(50, Math.sqrt(dx*dx + dy*dy)); const angle = Math.atan2(dy, dx); const knobX = 40 + dist * Math.cos(angle); const knobY = 40 + dist * Math.sin(angle); joystickKnob.style.transform = `translate(${knobX}px, ${knobY}px)`; } }
-            function handlePointerUp(e) { isShooting = false; if (joystickActive) { joystickActive = false; joystickKnob.style.transform = `translate(40px, 40px)`; } }
+            function handlePointerMove(e) {
+                if (joystickActive && joystickTouchId !== null) {
+                    e.preventDefault();
+                    for (let i = 0; i < e.touches.length; i++) {
+                        const touch = e.touches[i];
+                        if (touch.identifier === joystickTouchId) {
+                            joystickCurrent.x = touch.clientX;
+                            joystickCurrent.y = touch.clientY;
+                            const dx = joystickCurrent.x - joystickStart.x;
+                            const dy = joystickCurrent.y - joystickStart.y;
+                            const joystickAreaRect = joystickArea.getBoundingClientRect();
+                            const maxDist = joystickAreaRect.width / 2 - joystickKnob.offsetWidth / 2;
+                            const dist = Math.min(maxDist, Math.sqrt(dx*dx + dy*dy));
+                            const angle = Math.atan2(dy, dx);
+                            const knobBasePos = (joystickAreaRect.width - joystickKnob.offsetWidth) / 2;
+                            const knobX = knobBasePos + dist * Math.cos(angle);
+                            const knobY = knobBasePos + dist * Math.sin(angle);
+                            joystickKnob.style.transform = `translate(${knobX}px, ${knobY}px)`;
+                            break; // Found our touch, no need to continue
+                        }
+                    }
+                }
+            }
+
+            function handlePointerUp(e) {
+                e.preventDefault();
+                const changedTouches = e.changedTouches;
+                for (let i = 0; i < changedTouches.length; i++) {
+                    const touch = changedTouches[i];
+                    if (touch.identifier === shootTouchId) {
+                        shootTouchId = null;
+                        isShooting = false;
+                    }
+                    if (touch.identifier === joystickTouchId) {
+                        joystickTouchId = null;
+                        joystickActive = false;
+                        const knobBasePos = (joystickArea.offsetWidth - joystickKnob.offsetWidth) / 2;
+                        joystickKnob.style.transform = `translate(${knobBasePos}px, ${knobBasePos}px)`;
+                    }
+                }
+            }
 
             // --- INITIALIZATION AND EVENT LISTENERS ---
             window.addEventListener('resize', resizeGame);
